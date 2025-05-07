@@ -7,6 +7,7 @@ import serial
 import serial.tools.list_ports
 import csv
 from collections import Counter
+import platform
 
 # Load YOLOv8 model
 model = YOLO('best.pt')
@@ -23,11 +24,33 @@ if not os.path.exists(csv_file):
         writer.writerow(['Plate Number', 'Payment Status', 'Timestamp'])
 
 # ===== Auto-detect Arduino Serial Port =====
+# def detect_arduino_port():
+#     ports = list(serial.tools.list_ports.comports())
+#     for port in ports:
+#         if "COM" in port.device or "wchusbmodem" in port.device:
+#             return port.device
+#     return None
+
+# Arduino connection
 def detect_arduino_port():
     ports = list(serial.tools.list_ports.comports())
+    system = platform.system()
+
+    # for port in ports:
+    #     if "Arduino" in port.description or "CH340" in port.device:
+    #         return port.device
+    # return None
+
     for port in ports:
-        if "COM" in port.device or "wchusbmodem" in port.device:
-            return port.device
+        if system == "Linux":
+            if "ttyUSB" in port.device or "ttyACM" in port.device:
+                return port.device
+        elif system == "Darwin":  # macOS
+            if "usbmodem" in port.device or "usbserial" in port.device:
+                return port.device
+        elif system == "Windows":
+            if "COM" in port.device:
+                return port.device
     return None
 
 arduino_port = detect_arduino_port()
@@ -40,9 +63,23 @@ else:
     arduino = None
 
 # ===== Ultrasonic Sensor Setup =====
-import random
-def mock_ultrasonic_distance():
-    return random.choice([random.randint(10, 40)] + [random.randint(60, 150)] * 10)
+# import random
+# def mock_ultrasonic_distance():
+#     return random.choice([random.randint(10, 40)] + [random.randint(60, 150)] * 10)
+# ===== Ultrasonic Sensor Reading from Arduino =====
+def read_distance(arduino):
+    """
+    Reads a distance (float) value from the Arduino via serial.
+    Returns the float if valid, or None if invalid/empty.
+    """
+    if arduino and arduino.in_waiting > 0:
+        try:
+            line = arduino.readline().decode('utf-8').strip()
+            return float(line)
+        except (ValueError, UnicodeDecodeError, serial.SerialException):
+            return 1000  # Return a large distance if reading fails
+    return 1000 
+
 
 # Initialize webcam
 cap = cv2.VideoCapture(0)
@@ -58,7 +95,7 @@ while True:
     if not ret:
         break
 
-    distance = mock_ultrasonic_distance()
+    distance = read_distance(arduino)
     print(f"[SENSOR] Distance: {distance} cm")
 
     if distance <= 50:
